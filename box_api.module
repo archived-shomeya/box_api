@@ -1,0 +1,256 @@
+<?php
+
+use Guzzle\Http\Client;
+use Guzzle\Http\Exception;
+use Box\BoxAPI\BoxAPIClient;
+use Box\BoxAPI;
+use Guzzle\Log\Zf2LogAdapter;
+use Guzzle\Plugin\Log\LogPlugin;
+use Guzzle\Log\MessageFormatter;
+use Zend\Log\Logger;
+use Zend\Log\Writer\Stream;
+
+// Define the lifetime of a refresh token in seconds.
+define('BOX_API_REFRESH_TOKEN_LIFETIME', 60*60*24*14); // 14 days
+
+/**
+ * @file
+ * Functionality related to Box.com API integration.
+ */
+
+/**
+ * Implements hook_init().
+ */
+function box_api_init() {
+  composer_manager_register_autoloader();
+}
+
+/**
+ * Implements hook_entity_info().
+ */
+function box_api_entity_info() {
+  $return = array();
+
+  $return['box_api_creds'] = array(
+    'label' => t('Credentials'),
+    'plural label' => t('Credentials'),
+    'description' => t('Entity representing a set of Box API credentials'),
+    'entity class' => 'BoxAPICreds',
+    'controller class' => 'EntityAPIController',
+    'base table' => 'box_api_creds',
+    'fieldable' => TRUE,
+    'entity keys' => array(
+      'id' => 'id',
+    ),
+    // Make use the class' label() and uri() implementation by default.
+    'label callback' => 'entity_class_label',
+    'uri callback' => 'entity_class_uri',
+    'bundles' => array(
+      'box_api_creds' => array(
+        'label' => t('Credentials'),
+      ),
+    ),
+    'module' => 'box_api',
+  );
+
+  return $return;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function box_api_permission() {
+  return array(
+    'administer box api authorization' =>  array(
+      'title' => t('Administer Box API authorization'),
+      'description' => t('Perform authorization tasks for my Box API via OAUTH 2.0.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function box_api_menu() {
+  $items = array();
+
+  $items['admin/config/media/box'] = array(
+    'title' => 'Box.com',
+    'description' => 'Configure your Box.com integration',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('box_api_settings'),
+    'access arguments' => array('access administration pages'),
+  );
+  $items['admin/config/media/box/settings'] = array(
+    'title' => 'Settings',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -50,
+  );
+
+
+  $items['box_api/authorization_token'] = array(
+    'title' => 'Authorization token',
+    'page callback' => 'box_api_authorization_token_callback',
+    'access arguments' => array('administer box api authorization'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Form callback for settings form.
+ */
+function box_api_settings() {
+  $form = array();
+
+
+  return system_settings_form($form);
+}
+
+
+/**
+ * Start Authentication with Box.com via OAUTH 2.0.
+ *
+ * This function performs a drupal_goto() which redirects to api.box.com.
+ *
+ * @param string $key
+ *   The unique key for this set of creds. This should usually be
+ *   prefixed with the name of the module requests this set of credentials. If
+ *   the set already exists, then it will be updated.
+ * @param string $client_id
+ *   The OAUTH 2.0 client id.
+ * @param string $client_secret
+ *   The OAUTH 2.0 client secret.
+ * @param $options
+ *   An options array with config options such as:
+ *   - 'redirect': an internal Drupal path to redirect to upon success or
+ *     failure of the OAuth access_token request.
+ *   - 'auto_refresh': boolean indicating whether or not this set of credentials
+ *     should be automatically refreshed before the refresh token expires. This
+ *     relies on cron running on a regular schedule. Defaults to TRUE.
+ *
+ * @return none
+ *   This function redirects and exits via drupal_goto().
+ */
+function box_api_generate_creds_set($key, $client_id, $client_secret, $options) {
+  $creds = BoxAPICreds::findByKeyOrNew($key);
+
+  $creds->client_id = $client_id;
+  $creds->client_secret = $client_secret;
+  $creds->setOptions($options);
+  $creds->setDrupalToken();
+  $creds->save();
+
+
+  $query = array(
+    'client_id' => $client_id,
+    'response_type' => 'code',
+    'redirect_uri' => url('box_api/authorization_token', array('absolute' => TRUE, 'https' => TRUE)),
+    'state' => $creds->token,
+  );
+
+  drupal_goto('https://api.box.com/oauth2/authorize', array('absolute' => TRUE, 'query' => $query));
+}
+
+/**
+ * Menu callback for authorization token.
+ */
+function box_api_authorization_token_callback() {
+  if (!isset($_GET['state']) && !isset($_GET['code'])) {
+    return drupal_not_found();
+  }
+
+  $creds = BoxAPICreds::findByToken($_GET['state']);
+
+  if (!$creds) {
+    return drupal_not_found();
+  }
+
+  $code = $_GET['code'];
+
+  $post_data = array(
+    'grant_type' => 'authorization_code',
+    'code' => str_replace('@', '', $code),
+    'client_id' => str_replace('@', '', $creds->client_id),
+    'client_secret' => str_replace('@', '', $creds->client_secret),
+  );
+
+  $client = new Client('https://api.box.com');
+  $request = $client->post('/oauth2/token', NULL, $post_data);
+
+  try {
+    $response = $request->send();
+  } catch (Guzzle\Http\Exception\BadResponseException $e) {
+    $response = $e->getResponse();
+    $response_data = json_decode($response->getBody());
+    watchdog('box_api', 'Error retrieving access token from Box: !exception', array('!exception' => $e->getMessage()));
+    if (isset($response_data->error_description)) {
+      drupal_set_message(t('There was a problem communicating with the Box API: !error', array('!error' => $response_data->error_description)), 'error');
+    }
+    else {
+      drupal_set_message(t('There was a problem communicating with the Box API: !exception', array('!exception' => $e->getMessage())), 'error');
+    }
+    drupal_goto($creds->getOption('redirect'));
+  }
+
+  $response_data = json_decode($response->getBody());
+
+  if (!empty($response_data->error)) {
+    drupal_set_message(t('There was a problem authorizing with the Box API: @error', array('@error' => $response_data->error_description)), 'error');
+    drupal_goto($creds->getOption('redirect'));
+  }
+
+  $creds->access_token = $response_data->access_token;
+  $creds->refresh_token = $response_data->refresh_token;
+  $creds->token_status = TRUE;
+  $creds->timestamp = REQUEST_TIME;
+  $creds->expires = $response_data->expires_in;
+  $creds->save();
+
+  drupal_goto($creds->getOption('redirect'));
+}
+
+/**
+ * Implements hook_cron().
+ */
+function box_api_cron() {
+  // @TODO: Make this iterate over creds to ensure they don't expire.
+  // Should probably use queue workers.
+  // Also be sure to check to check whether $options['refresh'] is set to true.
+}
+
+/**
+ * Test function
+ *
+ * @return BoxAPIClient;
+ */
+function box_api_factory($creds_key) {
+  $creds = BoxAPICreds::findByKey($creds_key);
+  if ($creds->tokenIsValid()) {
+    $client = BoxAPIClient::factory(array('token' => $creds->access_token));
+
+    if (variable_get('box_api_log_file', FALSE)) {
+      $writer = new Stream('file:///tmp/guzzle.log');
+      $logger = new Logger;
+      $logger->addWriter($writer);
+      $adapter = new Zf2LogAdapter($logger);
+      $logPlugin = new LogPlugin($adapter, '{request}');
+      $client->addSubscriber($logPlugin);
+    }
+
+    if (variable_get('box_api_log_watchdog', FALSE)) {
+      $adapter = new BoxAPIWatchdogLogAdapter;
+      $logPlugin = new LogPlugin($adapter, MessageFormatter::DEBUG_FORMAT);
+      $client->addSubscriber($logPlugin);
+    }
+
+
+    return $client;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+

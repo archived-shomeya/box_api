@@ -1,0 +1,92 @@
+<?php
+
+/**
+ * @file
+ * Schema and installation functions for box_api module.
+ */
+
+function box_api_schema() {
+  $schema = array();
+
+  $schema['box_api_creds'] = array(
+    'description' => 'Store credentials for box API',
+    'fields' => array(
+      'id' => array(
+        'description' => 'Serial ID.',
+        'type' => 'serial',
+        'unsighed' => TRUE,
+        'not null' => TRUE,
+      ),
+      'id_key' => array(
+        'description' => 'Key that another module may use to access/store creds.',
+        'type' => 'varchar',
+        'length' => '64',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'token' => array(
+        'description' => 'Token used to identify creds during OAUTH dance.',
+        'type' => 'varchar',
+        'length' => '128',
+        'not null' => FALSE,
+      ),
+      'client_id' => array(
+        'description' => 'Client ID key',
+        'type' => 'varchar',
+        'length' => '64',
+        'not null' => FALSE,
+      ),
+      'client_secret' => array(
+        'description' => 'Client secret',
+        'type' => 'varchar',
+        'length' => '64',
+        'not null' => FALSE,
+      ),
+      'timestamp' => array(
+        'description' => 'Time that access and refresh tokens were generated.',
+        'type' => 'int',
+        'not null' => FALSE,
+      ),
+      'expires' => array(
+        'description' => 'Length of time in seconds until access token expires.',
+        'type' => 'int',
+        'not null' => FALSE,
+      ),
+      'access_token' => array(
+        'description' => 'The access token used to authorize API requests.',
+        'type' => 'varchar',
+        'length' => '64',
+        'not null' => FALSE,
+      ),
+      'refresh_token' => array(
+        'description' => 'The refresh token used to generate a new access token.',
+        'type' => 'varchar',
+        'length' => '128',
+        'not null' => FALSE,
+      ),
+      'token_status' => array(
+        'description' => 'The status of the access token for this set of creds.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'options' => array(
+        'description' => 'Options array for creating this set of creds.',
+        'type' => 'blob',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+      ),
+    ),
+    'primary key' => array('id'),
+    'indexes' => array(
+      'id_key' => array('id_key'),
+      'token' => array('token'),
+    ),
+  );
+
+  $schema['cache_box_object'] = drupal_get_schema_unprocessed('system', 'cache');
+
+  return $schema;
+}
+

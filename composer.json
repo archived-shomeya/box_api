@@ -1,0 +1,23 @@
+{
+  "name": "drupal/box_api",
+  "description": "Integrates with Box.com API",
+  "type": "drupal-module",
+  "license": "GPL-2.0",
+  "authors": [
+    {
+      "name": "Michael Prasuhn",
+      "homepage": "http://shomeya.com"
+    }
+  ],
+  "require": {
+    "shomeya/boxapi": "dev-master",
+    "guzzle/guzzle": "3.4.*",
+    "zendframework/zend-log": "2.*"
+  },
+  "repositories": [
+    {
+      "type": "vcs",
+      "url":  "git@github.com:shomeya/box_api_client.git"
+    }
+  ]
+}
