@@ -2,7 +2,6 @@ name = Box.com API integration
 description = Provides integation with Box.com APIs.
 core = 7.x
 dependencies[] = entity
-dependencies[] = composer_manager
 
 files[] = includes/creds_entity.php
 files[] = includes/watchdog_logger.php

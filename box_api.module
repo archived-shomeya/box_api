@@ -22,7 +22,12 @@ define('BOX_API_REFRESH_TOKEN_LIFETIME', 60*60*24*14); // 14 days
  * Implements hook_init().
  */
 function box_api_init() {
-  composer_manager_register_autoloader();
+  if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+    require_once __DIR__ . '/vendor/autoload.php';
+  }
+  elseif (!function_exists('drush_main') && module_exists('composer_manager')) {
+    composer_manager_register_autoloader();
+  }
 }
 
 /**
@@ -226,7 +231,7 @@ function box_api_cron() {
  * @return BoxAPIClient;
  */
 function box_api_factory($creds_key) {
-  $creds = BoxAPICreds::findByKey($creds_key);
+  $creds = BoxAPICreds::findByKeyOrNew($creds_key);
   if ($creds->tokenIsValid()) {
     $client = BoxAPIClient::factory(array('token' => $creds->access_token));
 
