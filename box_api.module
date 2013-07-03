@@ -109,10 +109,50 @@ function box_api_menu() {
 function box_api_settings() {
   $form = array();
 
+  $form['box_api_cache_requests'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Cache requests'),
+    '#default_value' => variable_get('box_api_cache_requests', FALSE),
+  );
+
+  $form['box_api_cache_time'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Cache time'),
+    '#description' => t('Enter time for requests to be cached in seconds.'),
+    '#default_value' => variable_get('box_api_cache_time', 3600),
+    '#element_validate' => array('_box_api_cache_time_validate'),
+    '#states' => array(
+      'visible' => array(
+        ':input[name="box_api_cache_requests"]' => array('checked' => TRUE),
+      ),
+    ),
+  );
+
+  $form['clear_cache'] = array(
+    '#type' => 'submit',
+    '#value' => t('Clear Box.com object cache'),
+    '#submit' => array('_box_api_clear_cache'),
+  );
 
   return system_settings_form($form);
 }
 
+/**
+ * Validate the cache time on the settings page.
+ */
+function _box_api_cache_time_validate($element, &$form_state) {
+  if (empty($element['#value']) || !is_numeric($element['#value'])) {
+    form_error($element, t('Cache time must be a number.'));
+  }
+}
+
+/**
+ * Clear the box object cache.
+ */
+function _box_api_clear_cache() {
+  db_query("TRUNCATE {cache_box_object}");
+  drupal_set_message('Box.com object cache cleared.');
+}
 
 /**
  * Start Authentication with Box.com via OAUTH 2.0.
@@ -235,6 +275,8 @@ function box_api_factory($creds_key) {
   if ($creds->tokenIsValid()) {
     $client = BoxAPIClient::factory(array('token' => $creds->access_token));
 
+
+
     if (variable_get('box_api_log_file', FALSE)) {
       $writer = new Stream('file:///tmp/guzzle.log');
       $logger = new Logger;
@@ -250,8 +292,9 @@ function box_api_factory($creds_key) {
       $client->addSubscriber($logPlugin);
     }
 
+    $drupal_client = new DrupalBoxAPIClient($client, variable_get('box_api_cache_requests', FALSE), variable_get('box_api_cache_time', 3600));
 
-    return $client;
+    return $drupal_client;
   }
   else {
     return FALSE;
