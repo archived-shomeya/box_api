@@ -11,7 +11,7 @@ class BoxAPIWatchdogLogAdapter implements Guzzle\Log\LogAdapterInterface {
    *
    */
   public function log($message, $priority = LOG_INFO, $extras = null) {
-    watchdog('box_api', $message, array(), $priority);
+    watchdog('box_api_request', $message, array(), $priority);
   }
 }
 

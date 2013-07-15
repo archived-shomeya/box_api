@@ -84,16 +84,24 @@ class BoxAPICreds extends Entity {
    * @return bool
    */
   public function tokenIsValid() {
-    if (!$this->token_status || empty($this->access_token) || empty($this->timestamp)) {
+    if (empty($this->client_id) || empty($this->client_secret)) {
+      watchdog('box_api', 'Attempting to use creds with no client ID or secret: @creds', array('@creds' => $this->id_key), WATCHDOG_ERROR);
       return FALSE;
     }
+
+    if (!$this->token_status || empty($this->access_token) || empty($this->timestamp)) {
+      watchdog('box_api', 'Attempting to use creds with empty access token: @creds. Perform authorization with OAUTH2 first.', array('@creds' => $this->id_key), WATCHDOG_ERROR);
+      return FALSE;
+    }
+
 
     if (REQUEST_TIME < ($this->timestamp + $this->expires)) {
       return TRUE;
     }
-    else {
-      return $this->refreshToken();
-    }
+
+    watchdog('box_api', 'Creds request with expired access token: @creds. Refresh token will be used to obtain new access token.', array('@creds' => $this->id_key), WATCHDOG_ERROR);
+    return $this->refreshToken();
+
   }
 
   /**
@@ -101,8 +109,11 @@ class BoxAPICreds extends Entity {
    */
   public function refreshToken() {
     if (REQUEST_TIME > ($this->timestamp + BOX_API_REFRESH_TOKEN_LIFETIME)) {
-      watchdog('box_api', 'The refresh token for @creds has expired.', array('@creds' => $this->id_key));
-      return FALSE;
+      watchdog('box_api', 'The refresh token for @creds has expired.', array('@creds' => $this->id_key), WATCHDOG_ERROR);
+      $this->token_status = FALSE;
+      $this->save();
+
+      return $this->token_status;
     }
     $post_data = array(
       'grant_type' => 'refresh_token',
@@ -119,7 +130,7 @@ class BoxAPICreds extends Entity {
     } catch (Guzzle\Http\Exception\BadResponseException $e) {
       $response = $e->getResponse();
       $response_data = json_decode($response->getBody());
-      watchdog('box_api', 'Error retrieving access token from Box: !exception', array('!exception' => $e->getMessage()));
+      watchdog('box_api', 'Error retrieving access token from Box: !exception', array('!exception' => $e->getMessage()), WATCHDOG_ERROR);
       if (isset($response_data->error_description)) {
         drupal_set_message(t('There was a problem communicating with the Box API: !error', array('!error' => $response_data->error_description)), 'error');
       }
@@ -199,6 +210,41 @@ class BoxAPICreds extends Entity {
 
     return $creds;
   }
+
+  /**
+   * Find all credentials.
+   *
+   * @return BoxAPICreds
+   *   The loaded entities or an empty array if no items are found.
+   */
+  static function all() {
+    $results = self::query()->execute();
+
+    if (isset($results['box_api_creds'])) {
+      $ids = array_keys($results['box_api_creds']);
+      return entity_load('box_api_creds', $ids);
+    }
+    return array();
+  }
+
+  /**
+   * Find all credentials.
+   *
+   * @param $id
+   *   The ID to lookup.
+   * @return BoxAPICreds
+   *   The loaded entity.
+   */
+  static function findById($id) {
+    $results = self::query()->propertyCondition('id', $id)->range(0, 1)->execute();
+
+    if (isset($results['box_api_creds'])) {
+      $ids = array_keys($results['box_api_creds']);
+      return entity_load_single('box_api_creds', reset($ids));
+    }
+    return FALSE;
+  }
+
 
   /**
    * Return a preset EntityFieldQuery

@@ -128,6 +128,12 @@ function box_api_settings() {
     ),
   );
 
+  $form['box_api_log_watchdog'] = array(
+    '#type' => 'checkbox',
+    '#title' => 'Log requests to watchdog',
+    '#default_value' => variable_get('box_api_log_watchdog', FALSE),
+  );
+
   $form['clear_cache'] = array(
     '#type' => 'submit',
     '#value' => t('Clear Box.com object cache'),
@@ -260,9 +266,37 @@ function box_api_authorization_token_callback() {
  * Implements hook_cron().
  */
 function box_api_cron() {
-  // @TODO: Make this iterate over creds to ensure they don't expire.
-  // Should probably use queue workers.
-  // Also be sure to check to check whether $options['refresh'] is set to true.
+  $creds = BoxAPICreds::all();
+
+  $queue = $queue = DrupalQueue::get('box_api_refresh');
+  foreach ($creds as $cred_set) {
+    if ($cred_set->options['auto_refresh']) {
+      $queue->createItem($cred_set->id);
+    }
+  }
+}
+
+/**
+ * Implements hook_cron_queue_info().
+ */
+function box_api_cron_queue_info() {
+  return array(
+    'box_api_refresh' => array(
+      'worker callback' => 'box_api_token_refresh',
+      'time' => 30,
+    ),
+  );
+}
+
+/**
+ * Worker callback for cron queue.
+ *
+ * @param $cred_id int The ID of the credential set to refresh.
+ */
+function box_api_token_refresh($cred_id) {
+  $creds = BoxAPICreds::findById($cred_id);
+
+  $creds->refreshToken();
 }
 
 /**
@@ -274,17 +308,6 @@ function box_api_factory($creds_key) {
   $creds = BoxAPICreds::findByKeyOrNew($creds_key);
   if ($creds->tokenIsValid()) {
     $client = BoxAPIClient::factory(array('token' => $creds->access_token));
-
-
-
-    if (variable_get('box_api_log_file', FALSE)) {
-      $writer = new Stream('file:///tmp/guzzle.log');
-      $logger = new Logger;
-      $logger->addWriter($writer);
-      $adapter = new Zf2LogAdapter($logger);
-      $logPlugin = new LogPlugin($adapter, '{request}');
-      $client->addSubscriber($logPlugin);
-    }
 
     if (variable_get('box_api_log_watchdog', FALSE)) {
       $adapter = new BoxAPIWatchdogLogAdapter;
