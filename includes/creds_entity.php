@@ -126,7 +126,7 @@ class BoxAPICreds extends Entity {
       'refresh_token' => str_replace('@', '', $this->refresh_token),
     );
 
-    $client = new Client('https://www.box.com');
+    $client = new Client('https://api.box.com');
     $request = $client->post('/oauth2/token', NULL, $post_data);
 
     try {
