@@ -90,8 +90,12 @@ class BoxAPICreds extends Entity {
     }
 
     if (!$this->token_status || empty($this->access_token) || empty($this->timestamp)) {
-      watchdog('box_api', 'Attempting to use creds with empty access token: @creds. Perform authorization with OAUTH2 first.', array('@creds' => $this->id_key), WATCHDOG_ERROR);
-      return FALSE;
+      if (empty($this->refresh_token)) {
+        watchdog('box_api', 'Attempting to use creds with empty access token: @creds. Perform authorization with OAUTH2 first.', array('@creds' => $this->id_key), WATCHDOG_ERROR);
+        return FALSE;
+      }
+      watchdog('box_api', 'Attempting to use creds with empty access token: @creds. Refresh token will be used to obtain new access token.', array('@creds' => $this->id_key), WATCHDOG_ERROR);
+      return $this->refreshToken();
     }
 
 
@@ -122,7 +126,7 @@ class BoxAPICreds extends Entity {
       'refresh_token' => str_replace('@', '', $this->refresh_token),
     );
 
-    $client = new Client('https://api.box.com');
+    $client = new Client('https://www.box.com');
     $request = $client->post('/oauth2/token', NULL, $post_data);
 
     try {

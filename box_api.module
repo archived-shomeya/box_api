@@ -163,7 +163,7 @@ function _box_api_clear_cache() {
 /**
  * Start Authentication with Box.com via OAUTH 2.0.
  *
- * This function performs a drupal_goto() which redirects to api.box.com.
+ * This function performs a drupal_goto() which redirects to www.box.com.
  *
  * @param string $key
  *   The unique key for this set of creds. This should usually be
@@ -201,7 +201,7 @@ function box_api_generate_creds_set($key, $client_id, $client_secret, $options) 
     'state' => $creds->token,
   );
 
-  drupal_goto('https://api.box.com/oauth2/authorize', array('absolute' => TRUE, 'query' => $query));
+  drupal_goto('https://www.box.com/oauth2/authorize', array('absolute' => TRUE, 'query' => $query));
 }
 
 /**
@@ -227,7 +227,7 @@ function box_api_authorization_token_callback() {
     'client_secret' => str_replace('@', '', $creds->client_secret),
   );
 
-  $client = new Client('https://api.box.com');
+  $client = new Client('https://www.box.com');
   $request = $client->post('/oauth2/token', NULL, $post_data);
 
   try {
