@@ -112,6 +112,20 @@ class BoxAPICreds extends Entity {
    * Uses the refresh_token to updates the access token.
    */
   public function refreshToken() {
+    if (!lock_acquire('box_api_token_refresh')) {
+      lock_wait('box_api_token_refresh');
+      $this->reload();
+      return $this->token_status;
+    }
+
+    $return = $this->fetchAccessTokenViaRfresh();
+    lock_release('box_api_token_refresh');
+
+    return $return;
+  }
+
+
+  private function fetchAccessTokenViaRfresh() {
     if (REQUEST_TIME > ($this->timestamp + BOX_API_REFRESH_TOKEN_LIFETIME)) {
       watchdog('box_api', 'The refresh token for @creds has expired.', array('@creds' => $this->id_key), WATCHDOG_ERROR);
       $this->token_status = FALSE;
@@ -136,10 +150,10 @@ class BoxAPICreds extends Entity {
       $response_data = json_decode($response->getBody());
       watchdog('box_api', 'Error retrieving access token from Box: !exception', array('!exception' => $e->getMessage()), WATCHDOG_ERROR);
       if (isset($response_data->error_description)) {
-        drupal_set_message(t('There was a problem communicating with the Box API: !error', array('!error' => $response_data->error_description)), 'error');
+//        drupal_set_message(t('There was a problem communicating with the Box API: !error', array('!error' => $response_data->error_description)), 'error');
       }
       else {
-        drupal_set_message(t('There was a problem communicating with the Box API: !exception', array('!exception' => $e->getMessage())), 'error');
+//        drupal_set_message(t('There was a problem communicating with the Box API: !exception', array('!exception' => $e->getMessage())), 'error');
       }
       $this->token_status = FALSE;
       $this->save();
@@ -249,6 +263,15 @@ class BoxAPICreds extends Entity {
     return FALSE;
   }
 
+  /**
+   * Reload entity values from database.
+   */
+  public function reload() {
+    $entity = entity_load_unchanged('box_api_creds', $this->id);
+    foreach ($entity as $property => $value) {
+      $this->$property = $value;
+    }
+  }
 
   /**
    * Return a preset EntityFieldQuery

@@ -156,7 +156,7 @@ function _box_api_cache_time_validate($element, &$form_state) {
  * Clear the box object cache.
  */
 function _box_api_clear_cache() {
-  db_query("TRUNCATE {cache_box_object}");
+  cache_clear_all('*', 'cache_box_object', TRUE);
   drupal_set_message('Box.com object cache cleared.');
 }
 
